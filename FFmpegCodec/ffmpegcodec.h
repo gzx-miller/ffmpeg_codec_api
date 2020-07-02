@@ -12,7 +12,10 @@
 #include <thread>
 
 using namespace std;
-typedef void(__stdcall * OnReceiveFrame)(int status);
+
+// 1: one frame, -1: failed, 0: complete
+// if return -1 or 0, need call StopDecodeWork for clear thread in g_map_codecs.
+typedef void(__stdcall * OnReceiveFrame)(int status, string msg);
 
 DLL_API int StartDecodeWork(string filePath,
     shared_ptr<uint8_t> outputBuf,
@@ -31,14 +34,8 @@ public:
     bool StartDecodeThread(string filePath,
         shared_ptr<uint8_t> outputBuf,
         OnReceiveFrame onReceiveFrame);
-
     bool StopDecodeThread();
-
-    bool YuvToRgb(uint8_t *yuv, int w, int h, uint8_t *rgb);
 };
 
-// 1. 使用路径, 创建ffmpeg相关对象
-// 2. 启动线程, 开始解码
-// 3. 通过回调设置每一帧图像到outputBuf
-// 4. 停止解码, 退出线程.
-
+void yuv420p_to_rgb24(uint8_t* srcY, uint8_t* srcU, uint8_t* srcV,
+    uint8_t* rgbbuffer, int width, int height);
