@@ -36,6 +36,7 @@ public:
         OnReceiveFrame onReceiveFrame);
     bool StopDecodeThread();
 };
-
-void yuv420p_to_rgb24(uint8_t* srcY, uint8_t* srcU, uint8_t* srcV,
-    uint8_t* rgbbuffer, int width, int height);
+void convertYUV(BYTE* y, BYTE* u, BYTE* v,
+    BYTE* oy, BYTE* ou, BYTE* ov,
+    int width, int height, int lineSize);
+void yuv420planarToRGB(const BYTE *yData, const BYTE *uData, const BYTE *vData, const int width, const int height, int lineSize, BYTE *rgb24Data);

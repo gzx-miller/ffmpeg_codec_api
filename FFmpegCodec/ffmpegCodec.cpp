@@ -117,8 +117,9 @@ void FFMpegDecoderProc(string filePath,
                     int retd = DecodePacket(codecContext, pkt, pFrame);
                     if (retd == 0) continue;
                     if (retd == -1) return onReceiveFrame(-1, "decode packet failed!");
-                    yuv420p_to_rgb24(pFrame->data[0], pFrame->data[1], pFrame->data[2],
-                        outputBuf.get(), pFrame->width, pFrame->height);
+
+                    yuv420planarToRGB(pFrame->data[0], pFrame->data[1], pFrame->data[2], 
+                        pFrame->width, pFrame->height, pFrame->linesize[0], outputBuf.get());
                     onReceiveFrame(1, "frame");
                     this_thread::sleep_for(chrono::milliseconds(40));
                 }
@@ -198,86 +199,26 @@ BOOL __stdcall DllMain(HANDLE hModule, DWORD reason, LPVOID lpReserved) {
     }
     return TRUE;
 }
-static long int crv_tab[256];
-static long int cbu_tab[256];
-static long int cgu_tab[256];
-static long int cgv_tab[256];
-static long int tab_76309[256];
-static uint8_t clp[1024];   //for clip in CCIR601   
 
-void yuv420p_to_rgb24(uint8_t* srcY, uint8_t* srcU, uint8_t* srcV,
-    uint8_t* rgbbuffer, int width, int height) {
-    int y1, y2, u, v;
-    uint8_t *py2;
-    int i, j, c1, c2, c3, c4;
-    uint8_t *d1, *d2;
-    static int init_yuv420p = 0;
-    if (init_yuv420p == 0) {
-        long int crv, cbu, cgu, cgv;
-        int i, ind;
-        crv = 104597; cbu = 132201;  /* fra matrise i global.h */
-        cgu = 25675;  cgv = 53279;
-        for (i = 0; i < 256; i++) {
-            crv_tab[i] = (i - 128) * crv;
-            cbu_tab[i] = (i - 128) * cbu;
-            cgu_tab[i] = (i - 128) * cgu;
-            cgv_tab[i] = (i - 128) * cgv;
-            tab_76309[i] = 76309 * (i - 16);
+
+void yuv420planarToRGB(const BYTE *yData, const BYTE *uData, const BYTE *vData, const int width, const int height, int lineSize, BYTE *rgb24Data) {
+    int index = 0;
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            BYTE y = yData[i*lineSize + j];
+            BYTE u = uData[(i / 2)*(lineSize / 2) + j / 2];
+            BYTE v = vData[(i / 2)*(lineSize / 2) + j / 2];
+
+            int data = (int)(y + 1.772 * (u - 128));//b分量
+            rgb24Data[index] = ((data < 0) ? 0 : (data > 255 ? 255 : data));
+
+            data = (int)(y - 0.34414 * (u - 128) - 0.71414 * (v - 128));//g分量
+            rgb24Data[index + 1] = ((data < 0) ? 0 : (data > 255 ? 255 : data));
+
+            data = (int)(y + 1.402 * (v - 128));//r分量
+            rgb24Data[index + 2] = ((data < 0) ? 0 : (data > 255 ? 255 : data));
+            index += 3;
         }
-        for (i = 0; i < 384; i++)
-            clp[i] = 0;
-        ind = 384;
-        for (i = 0; i < 256; i++)
-            clp[ind++] = i;
-        ind = 640;
-        for (i = 0; i < 384; i++)
-            clp[ind++] = 255;
-        init_yuv420p = 1;
-    }
-
-    py2 = srcY + width;
-    d1 = rgbbuffer;
-    d2 = d1 + 3 * width;
-
-    for (j = 0; j < height; j += 2)
-    {
-        for (i = 0; i < width; i += 2)
-        {
-            u = *srcU++;
-            v = *srcV++;
-
-            c1 = crv_tab[v];
-            c2 = cgu_tab[u];
-            c3 = cgv_tab[v];
-            c4 = cbu_tab[u];
-
-            //up-left   
-            y1 = tab_76309[*srcY++];
-            *d1++ = clp[384 + ((y1 + c1) >> 16)];
-            *d1++ = clp[384 + ((y1 - c2 - c3) >> 16)];
-            *d1++ = clp[384 + ((y1 + c4) >> 16)];
-
-            //down-left   
-            y2 = tab_76309[*py2++];
-            *d2++ = clp[384 + ((y2 + c1) >> 16)];
-            *d2++ = clp[384 + ((y2 - c2 - c3) >> 16)];
-            *d2++ = clp[384 + ((y2 + c4) >> 16)];
-
-            //up-right   
-            y1 = tab_76309[*srcY++];
-            *d1++ = clp[384 + ((y1 + c1) >> 16)];
-            *d1++ = clp[384 + ((y1 - c2 - c3) >> 16)];
-            *d1++ = clp[384 + ((y1 + c4) >> 16)];
-
-            //down-right   
-            y2 = tab_76309[*py2++];
-            *d2++ = clp[384 + ((y2 + c1) >> 16)];
-            *d2++ = clp[384 + ((y2 - c2 - c3) >> 16)];
-            *d2++ = clp[384 + ((y2 + c4) >> 16)];
-        }
-        d1 += 3 * width;
-        d2 += 3 * width;
-        srcY += width;
-        py2 += width;
     }
 }
+
