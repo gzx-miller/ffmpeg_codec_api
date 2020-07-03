@@ -63,7 +63,6 @@ void SaveRGBtoBMP(const char *filename, uint8_t *rgbbuf, int width, int height) 
     fclose(file);
 }
 
-
 typedef bool (* PFStopDecodeWork)(int index);
 PFStopDecodeWork pfStopDecodeWork = nullptr;
 int workerIndex = 0;

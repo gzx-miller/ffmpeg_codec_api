@@ -41,50 +41,50 @@ static int DecodePacket(AVCodecContext *dec_ctx, AVPacket *pkt, AVFrame *frame) 
     return 1;
 }
 
-void FFMpegDecoderProc(string filePath,
+void FFMpegDecoderProc(int threadIndex, string filePath,
     shared_ptr<uint8_t> outputBuf,
     OnReceiveFrame onReceiveFrame) {
     AVFormatContext	*pFormatCtx = avformat_alloc_context();
     if (avformat_open_input(&pFormatCtx, filePath.c_str(), NULL, NULL) != 0) {
-        return onReceiveFrame(-1, "open file failed!");
+        return DecoderExit(threadIndex, "open file failed!");
     }
     if (avformat_find_stream_info(pFormatCtx, NULL) < 0) {
-        return onReceiveFrame(-1, "find stream info failed!");
+        return DecoderExit(threadIndex, "find stream info failed!");
     }
 
     int i = 0;
     int videoIndex = GetVideoIndex(pFormatCtx, i);
     if (videoIndex < 0) {
-        return onReceiveFrame(-1, "get video stream failed!");
+        return DecoderExit(threadIndex, "get video stream failed!");
     }
 
     AVCodecParameters *pCodecParam = pFormatCtx->streams[videoIndex]->codecpar;
     AVCodec *pCodec = avcodec_find_decoder(pCodecParam->codec_id);
     if (pCodec == NULL) {
-        return onReceiveFrame(-1, "find decoder of videoIndex failed!");
+        return DecoderExit(threadIndex, "find decoder of videoIndex failed!");
     }
     AVCodecParserContext *parser = av_parser_init(pCodec->id);
     if (!parser) {
-        return onReceiveFrame(-1, "parser init failed!");
+        return DecoderExit(threadIndex, "parser init failed!");
     }
     AVCodecContext *codecContext = avcodec_alloc_context3(pCodec);
     if (!codecContext) {
-        return onReceiveFrame(-1, "alloc context failed!");
+        return DecoderExit(threadIndex, "alloc context failed!");
     }
 
     if (avcodec_parameters_to_context(codecContext, pCodecParam) < 0) {
-        return onReceiveFrame(-1, "parameters to context failed!");
+        return DecoderExit(threadIndex, "parameters to context failed!");
     }
 
     if (avcodec_open2(codecContext, pCodec, NULL) < 0) {
-        return onReceiveFrame(-1, "open decoder failed!");
+        return DecoderExit(threadIndex, "open decoder failed!");
     }
 
     AVFrame *pFrame = av_frame_alloc();
     AVFrame * pFrameYUV = av_frame_alloc();
     AVPacket* pkt = av_packet_alloc();
     if (!pkt) {
-        return onReceiveFrame(-1, "alloc packet failed!");
+        return DecoderExit(threadIndex, "alloc packet failed!");
     }
 
     av_dump_format(pFormatCtx, 0, filePath.c_str(), 0);
@@ -95,7 +95,7 @@ void FFMpegDecoderProc(string filePath,
     FILE* f = nullptr;
     fopen_s(&f, filePath.c_str(), "rb");
     if (!f) {
-        return onReceiveFrame(-1, "open file failed !");
+        return DecoderExit(threadIndex, "open file failed !");
     }
 
     while (!feof(f)) {
@@ -108,7 +108,7 @@ void FFMpegDecoderProc(string filePath,
             int ret = av_parser_parse2(parser, codecContext, &pkt->data, &pkt->size,
                 data, data_size, AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
             if (ret < 0) {
-                return onReceiveFrame(-1, "av parse failed!");
+                return DecoderExit(threadIndex, "av parse failed!");
             }
             data += ret;
             data_size -= ret;
@@ -116,7 +116,7 @@ void FFMpegDecoderProc(string filePath,
                 if (pkt->stream_index == videoIndex) {
                     int retd = DecodePacket(codecContext, pkt, pFrame);
                     if (retd == 0) continue;
-                    if (retd == -1) return onReceiveFrame(-1, "decode packet failed!");
+                    if (retd == -1) return DecoderExit(threadIndex, "decode packet failed!");
 
                     yuv420planarToRGB(pFrame->data[0], pFrame->data[1], pFrame->data[2], 
                         pFrame->width, pFrame->height, pFrame->linesize[0], outputBuf.get());
@@ -126,21 +126,24 @@ void FFMpegDecoderProc(string filePath,
             }
         }
     }
+
+    onReceiveFrame(1, "complete!");
+
     av_parser_close(parser);
     av_frame_free(&pFrameYUV);
     av_frame_free(&pFrame);
     avcodec_free_context(&codecContext);
     av_packet_free(&pkt);
     avformat_close_input(&pFormatCtx);
-    return onReceiveFrame(0, "complete!");
+    return DecoderExit(threadIndex, "complete!");
 }
 
-bool FFMpegCodec::StartDecodeThread(string filePath,
+bool FFMpegCodec::StartDecodeThread(int threadIndex, string filePath,
     shared_ptr<uint8_t> outputBuf,
     OnReceiveFrame onReceiveFrame) {
     _isExit = false;
     if (!_isRuning) {
-        _pThread.reset(new thread(FFMpegDecoderProc, filePath, outputBuf, onReceiveFrame));
+        _pThread.reset(new thread(FFMpegDecoderProc, threadIndex, filePath, outputBuf, onReceiveFrame));
     }
     else {
         fprintf(stderr, "Can't running two worker in same time! \n");
@@ -164,9 +167,9 @@ DLL_API int StartDecodeWork(string filePath,
     shared_ptr<uint8_t> outputBuf,
     OnReceiveFrame onReceiveFrame){
     shared_ptr<FFMpegCodec> pCodec(new FFMpegCodec());
-    pCodec->StartDecodeThread(filePath, outputBuf, onReceiveFrame);
     {
         unique_lock<mutex> lock(mtx);
+        pCodec->StartDecodeThread(g_handle_index, filePath, outputBuf, onReceiveFrame);
         g_map_codecs.insert(make_pair(g_handle_index++, pCodec));
     }
     return NULL;
@@ -190,6 +193,12 @@ DLL_API bool StopDecodeWork(int index){
     return TRUE;
 }
 
+static void DecoderExit(int threadIndex, string msg) {
+    fprintf(stdout, msg.c_str());
+    thread t(StopDecodeWork, threadIndex);
+    t.detach();
+}
+
 BOOL __stdcall DllMain(HANDLE hModule, DWORD reason, LPVOID lpReserved) {
     switch (reason) {
         case DLL_PROCESS_ATTACH: break;              // 被load
@@ -202,7 +211,7 @@ BOOL __stdcall DllMain(HANDLE hModule, DWORD reason, LPVOID lpReserved) {
 
 
 void yuv420planarToRGB(const BYTE *yData, const BYTE *uData, const BYTE *vData, const int width, const int height, int lineSize, BYTE *rgb24Data) {
-    int index = 0;
+    int index = (width*height - 1) * 3;
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
             BYTE y = yData[i*lineSize + j];
@@ -217,7 +226,7 @@ void yuv420planarToRGB(const BYTE *yData, const BYTE *uData, const BYTE *vData, 
 
             data = (int)(y + 1.402 * (v - 128));//r分量
             rgb24Data[index + 2] = ((data < 0) ? 0 : (data > 255 ? 255 : data));
-            index += 3;
+            index -= 3;
         }
     }
 }
