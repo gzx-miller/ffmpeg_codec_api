@@ -72,6 +72,7 @@ void __stdcall OnReceiveFrame(int status, string msg) {
         static int id = 0;
         SaveRGBtoBMP("1.bmp", pBuf.get(), 480, 272);
     } else {
+        cout << "Err" << msg.c_str() << endl;
         pfStopDecodeWork(workerIndex);
     }
 }

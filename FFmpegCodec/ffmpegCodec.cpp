@@ -118,7 +118,7 @@ void FFMpegDecoderProc(int threadIndex, string filePath,
                     if (retd == 0) continue;
                     if (retd == -1) return DecoderExit(threadIndex, "decode packet failed!");
 
-                    yuv420planarToRGB(pFrame->data[0], pFrame->data[1], pFrame->data[2], 
+                    yuv420pToRGB24(pFrame->data[0], pFrame->data[1], pFrame->data[2], 
                         pFrame->width, pFrame->height, pFrame->linesize[0], outputBuf.get());
                     onReceiveFrame(1, "frame");
                     this_thread::sleep_for(chrono::milliseconds(40));
@@ -210,22 +210,24 @@ BOOL __stdcall DllMain(HANDLE hModule, DWORD reason, LPVOID lpReserved) {
 }
 
 
-void yuv420planarToRGB(const BYTE *yData, const BYTE *uData, const BYTE *vData, const int width, const int height, int lineSize, BYTE *rgb24Data) {
-    int index = (width*height - 1) * 3;
+void yuv420pToRGB24(const BYTE *yBuf, const BYTE *uBuf, const BYTE *vBuf,
+    const int width, const int height, int lineSize,
+    BYTE *rgbBuf) {
+    int index = (width * height - 1) * 3;
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
-            BYTE y = yData[i*lineSize + j];
-            BYTE u = uData[(i / 2)*(lineSize / 2) + j / 2];
-            BYTE v = vData[(i / 2)*(lineSize / 2) + j / 2];
+            BYTE y = yBuf[i * lineSize + j];
+            BYTE u = uBuf[(i / 2) * (lineSize / 2) + j / 2];
+            BYTE v = vBuf[(i / 2) * (lineSize / 2) + j / 2];
 
-            int data = (int)(y + 1.772 * (u - 128));//b分量
-            rgb24Data[index] = ((data < 0) ? 0 : (data > 255 ? 255 : data));
+            int data = (int)(y + 1.772 * (u - 128));
+            rgbBuf[index] = ((data < 0) ? 0 : (data > 255 ? 255 : data));
 
-            data = (int)(y - 0.34414 * (u - 128) - 0.71414 * (v - 128));//g分量
-            rgb24Data[index + 1] = ((data < 0) ? 0 : (data > 255 ? 255 : data));
+            data = (int)(y - 0.34414 * (u - 128) - 0.71414 * (v - 128));
+            rgbBuf[index + 1] = ((data < 0) ? 0 : (data > 255 ? 255 : data));
 
-            data = (int)(y + 1.402 * (v - 128));//r分量
-            rgb24Data[index + 2] = ((data < 0) ? 0 : (data > 255 ? 255 : data));
+            data = (int)(y + 1.402 * (v - 128));
+            rgbBuf[index + 2] = ((data < 0) ? 0 : (data > 255 ? 255 : data));
             index -= 3;
         }
     }

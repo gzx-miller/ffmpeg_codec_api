@@ -37,4 +37,4 @@ public:
     bool StopDecodeThread();
 };
 
-void yuv420planarToRGB(const BYTE *yData, const BYTE *uData, const BYTE *vData, const int width, const int height, int lineSize, BYTE *rgb24Data);
+void yuv420pToRGB24(const BYTE *yData, const BYTE *uData, const BYTE *vData, const int width, const int height, int lineSize, BYTE *rgb24Data);
