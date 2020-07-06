@@ -209,26 +209,24 @@ BOOL __stdcall DllMain(HANDLE hModule, DWORD reason, LPVOID lpReserved) {
     return TRUE;
 }
 
-
 void yuv420pToRGB24(const BYTE *yBuf, const BYTE *uBuf, const BYTE *vBuf,
-    const int width, const int height, int lineSize,
-    BYTE *rgbBuf) {
-    int index = (width * height - 1) * 3;
+    const int width, const int height, int lineSize, BYTE *rgbBuf) {
+    int dstIndex = 0;
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
             BYTE y = yBuf[i * lineSize + j];
             BYTE u = uBuf[(i / 2) * (lineSize / 2) + j / 2];
             BYTE v = vBuf[(i / 2) * (lineSize / 2) + j / 2];
 
+            dstIndex = ((height - i - 1) * width + j) * 3;
             int data = (int)(y + 1.772 * (u - 128));
-            rgbBuf[index] = ((data < 0) ? 0 : (data > 255 ? 255 : data));
+            rgbBuf[dstIndex] = ((data < 0) ? 0 : (data > 255 ? 255 : data));
 
             data = (int)(y - 0.34414 * (u - 128) - 0.71414 * (v - 128));
-            rgbBuf[index + 1] = ((data < 0) ? 0 : (data > 255 ? 255 : data));
+            rgbBuf[dstIndex + 1] = ((data < 0) ? 0 : (data > 255 ? 255 : data));
 
             data = (int)(y + 1.402 * (v - 128));
-            rgbBuf[index + 2] = ((data < 0) ? 0 : (data > 255 ? 255 : data));
-            index -= 3;
+            rgbBuf[dstIndex + 2] = ((data < 0) ? 0 : (data > 255 ? 255 : data));
         }
     }
 }
