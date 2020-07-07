@@ -215,8 +215,8 @@ void yuv420pToRGB24(const BYTE *yBuf, const BYTE *uBuf, const BYTE *vBuf,
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
             BYTE y = yBuf[i * lineSize + j];
-            BYTE u = uBuf[(i / 2) * (lineSize / 2) + j / 2];
-            BYTE v = vBuf[(i / 2) * (lineSize / 2) + j / 2];
+            BYTE u = uBuf[(i>>1) * (lineSize>>1) + (j>>1)];
+            BYTE v = vBuf[(i>>1) * (lineSize>>1) + (j>>1)];
 
             dstIndex = ((height - i - 1) * width + j) * 3;
             int data = (int)(y + 1.772 * (u - 128));
